@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cookie Monster Diet Coach</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+  <style>
+    :root { --cm-blue: #2b7fd4; --cm-blue-dark: #1c5c9e; --cookie: #b06a2c; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #eaf3fb 0%, #d6e8f7 100%); color: #14304a; min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+    header { text-align: center; margin-bottom: 8px; }
+    header h1 { font-size: 1.9rem; margin: 8px 0 4px; color: var(--cm-blue-dark); }
+    header p { margin: 0; color: #486a86; }
+    .card { background: #fff; border-radius: 14px; padding: 18px 20px; margin: 16px 0;
+      box-shadow: 0 4px 16px rgba(28,92,158,0.10); }
+    .card h2 { margin: 0 0 12px; font-size: 1.15rem; color: var(--cm-blue-dark); }
+    .total { font-size: 3rem; font-weight: 800; color: var(--cookie); line-height: 1; }
+    .total small { font-size: 1rem; font-weight: 500; color: #6b7f90; }
+    form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input { padding: 10px 12px; border: 1px solid #c4d6e6; border-radius: 8px; font-size: 1rem; }
+    input[type=number] { width: 90px; }
+    input[type=text] { flex: 1; min-width: 140px; }
+    button { background: var(--cm-blue); color: #fff; border: none; border-radius: 8px;
+      padding: 10px 16px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button:hover { background: var(--cm-blue-dark); }
+    button.ghost { background: transparent; color: var(--cm-blue-dark); padding: 4px 10px; font-size: .85rem; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid #eef3f8; }
+    li:last-child { border-bottom: none; }
+    .muted { color: #6b7f90; }
+    .rec-allow { font-size: 1.6rem; font-weight: 800; color: var(--cookie); }
+    .tips { margin: 10px 0 0; padding-left: 18px; }
+    .tips li { display: list-item; border: none; padding: 2px 0; }
+    .err { color: #b3261e; margin: 6px 0 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const html = htm.bind(React.createElement);
+    const { useState, useEffect, useCallback } = React;
+    const api = (path, opts) => fetch("/api" + path, opts);
+
+    function App() {
+      const [summary, setSummary] = useState(null);
+      const [count, setCount] = useState(1);
+      const [type, setType] = useState("");
+      const [rec, setRec] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState("");
+
+      const load = useCallback(async () => {
+        const r = await api("/summary");
+        const s = await r.json();
+        setSummary(s);
+        setRec(s.latestRecommendation);
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const addCookies = async (e) => {
+        e.preventDefault();
+        setError("");
+        if (count <= 0) { setError("Enter a cookie count greater than zero."); return; }
+        const r = await api("/cookies", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: Number(count), type: type || null }),
+        });
+        if (!r.ok) { setError("Could not log cookies."); return; }
+        const s = await r.json(); setSummary(s); setRec(s.latestRecommendation);
+        setType("");
+      };
+
+      const remove = async (id) => {
+        const r = await api("/cookies/" + id, { method: "DELETE" });
+        if (r.ok) { const s = await r.json(); setSummary(s); setRec(s.latestRecommendation); }
+      };
+
+      const getRecommendation = async () => {
+        setBusy(true); setError("");
+        try {
+          const r = await api("/recommendation", { method: "POST" });
+          if (!r.ok) { setError("The diet coach is unavailable right now — your cookie log is safe."); return; }
+          setRec(await r.json());
+        } finally { setBusy(false); }
+      };
+
+      if (!summary) return html`<div class="wrap"><p class="muted">Loading…</p></div>`;
+
+      return html`
+        <div class="wrap">
+          <header>
+            <div style=${{fontSize: "2.6rem"}}>🍪</div>
+            <h1>Cookie Monster Diet Coach</h1>
+            <p>Track the cookies. Keep the joy. Watch the cholesterol.</p>
+          </header>
+
+          <div class="card">
+            <h2>Today — ${summary.day}</h2>
+            <div class="total">${summary.todayTotal} <small>cookies</small></div>
+            <form onSubmit=${addCookies} style=${{marginTop: "14px"}}>
+              <input type="number" min="1" value=${count}
+                onChange=${(e) => setCount(e.target.value)} aria-label="count" />
+              <input type="text" placeholder="type (e.g. chocolate chip)" value=${type}
+                onChange=${(e) => setType(e.target.value)} aria-label="type" />
+              <button type="submit">Add cookies</button>
+            </form>
+            ${error && html`<p class="err">${error}</p>`}
+            <ul style=${{marginTop: "12px"}}>
+              ${summary.todayEntries.length === 0
+                ? html`<li class="muted">No cookies logged today yet.</li>`
+                : summary.todayEntries.map((en) => html`
+                  <li key=${en.entryId}>
+                    <span>🍪 ${en.count}${en.type ? " · " + en.type : ""}</span>
+                    <button class="ghost" onClick=${() => remove(en.entryId)}>remove</button>
+                  </li>`)}
+            </ul>
+          </div>
+
+          <div class="card">
+            <h2>Recent days</h2>
+            <ul>
+              ${summary.recentDays.length === 0
+                ? html`<li class="muted">No history yet.</li>`
+                : summary.recentDays.map((d) => html`
+                  <li key=${d.day}><span>${d.day}</span><span>${d.total} 🍪</span></li>`)}
+            </ul>
+          </div>
+
+          <div class="card">
+            <h2>Diet recommendation</h2>
+            <button onClick=${getRecommendation} disabled=${busy}>
+              ${busy ? "Thinking…" : "Get a diet recommendation"}
+            </button>
+            ${rec && html`
+              <div style=${{marginTop: "14px"}}>
+                <div class="rec-allow">${rec.dailyCookieAllowance} cookies/day 🍪</div>
+                <p>${rec.rationale}</p>
+                <ul class="tips">
+                  ${rec.balancingSuggestions.map((t, i) => html`<li key=${i}>${t}</li>`)}
+                </ul>
+                <p class="muted">Generated ${rec.generatedOn}</p>
+              </div>`}
+          </div>
+        </div>`;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>
